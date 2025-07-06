@@ -21,6 +21,7 @@ const MONSTER_COLOR = 'red';
 // ゲームの状態
 let gameRunning = false;
 let maze = [];
+let visited = []; // 訪問済みセルを記録
 let player = { x: 0, y: 0, hp: 100 };
 let monster = { x: 0, y: 0, active: false };
 
@@ -29,11 +30,13 @@ function generateMaze() {
     const cols = Math.floor(canvas.width / TILE_SIZE);
     const rows = Math.floor(canvas.height / TILE_SIZE);
     maze = Array(rows).fill(0).map(() => Array(cols).fill(1)); // 1: 壁, 0: 道
+    visited = Array(rows).fill(0).map(() => Array(cols).fill(false)); // 全て未訪問
 
     // プレイヤーの初期位置
     player.x = Math.floor(cols / 2);
     player.y = Math.floor(rows / 2);
     maze[player.y][player.x] = 0; // プレイヤーの初期位置は道
+    visited[player.y][player.x] = true; // 訪問済みにする
 
     // ランダムウォークで道を生成
     let currentX = player.x;
@@ -103,6 +106,19 @@ function movePlayer(dx, dy) {
     if (newX >= 0 && newX < cols && newY >= 0 && newY < rows && maze[newY][newX] === 0) {
         player.x = newX;
         player.y = newY;
+        visited[player.y][player.x] = true; // 訪問済みにする
+
+        // プレイヤーが移動した際に周囲の壁を一定確率で道に変える
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        for (const [ddx, ddy] of directions) {
+            const checkX = player.x + ddx;
+            const checkY = player.y + ddy;
+            if (checkX >= 0 && checkX < cols && checkY >= 0 && checkY < rows && maze[checkY][checkX] === 1) {
+                if (Math.random() < 0.3) { // 30%の確率で壁を道に変える
+                    maze[checkY][checkX] = 0;
+                }
+            }
+        }
     }
 }
 
@@ -169,6 +185,28 @@ function spawnMonster() {
     }
 }
 
+// 道が急に壁になる処理
+function closeRandomPath() {
+    if (!gameRunning) return;
+    const cols = Math.floor(canvas.width / TILE_SIZE);
+    const rows = Math.floor(canvas.height / TILE_SIZE);
+
+    if (Math.random() < 0.02) { // 2%の確率で実行
+        let targetX, targetY;
+        let attempts = 0;
+        do {
+            targetX = Math.floor(Math.random() * cols);
+            targetY = Math.floor(Math.random() * rows);
+            attempts++;
+            // プレイヤーやモンスターのいる場所、または壁ではない場所を探す
+        } while ((maze[targetY][targetX] === 1 || (targetX === player.x && targetY === player.y) || (targetX === monster.x && targetY === monster.y)) && attempts < 100);
+
+        if (attempts < 100) {
+            maze[targetY][targetX] = 1; // 道を壁に変える
+        }
+    }
+}
+
 // ゲームオーバー表示
 function drawGameOver() {
     ctx.fillStyle = 'white';
@@ -194,6 +232,7 @@ function gameLoop(currentTime) {
     if (currentTime - lastMonsterMoveTime > monsterMoveInterval) {
         moveMonster();
         spawnMonster();
+        closeRandomPath(); // 道が急に壁になる処理を呼び出す
         lastMonsterMoveTime = currentTime;
     }
 
